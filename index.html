@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ghibli Client Engine — Real-time Non-AI Style Transfer</title>
+  <meta name="description" content="100% client-side WebGL2 Ghibli-style video processor. Bilateral smoothing, Sobel edges, paper grain. Zero AI." />
+  <style>
+    :root {
+      --bg: #0c0b0a;
+      --surface: #161412;
+      --border: #2a2520;
+      --gold: #c9a227;
+      --gold-dim: #8a7020;
+      --text: #e8e0d5;
+      --muted: #9a9080;
+      --danger: #c45c4a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+      max-width: 720px;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--gold);
+      margin-bottom: 0.35rem;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .stage {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      max-width: 960px;
+      width: 100%;
+    }
+
+    #ghibli-canvas {
+      width: 100%;
+      max-height: 540px;
+      background: #000;
+      border-radius: 8px;
+      display: block;
+      aspect-ratio: 16/9;
+      object-fit: contain;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1.25rem;
+      align-items: center;
+    }
+
+    button, label.file-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    button:hover:not(:disabled), label.file-btn:hover {
+      border-color: var(--gold-dim);
+      background: #1c1915;
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, #c9a227, #a8841c);
+      border-color: transparent;
+      color: #0c0b0a;
+      font-weight: 600;
+    }
+
+    button.primary:hover:not(:disabled) {
+      filter: brightness(1.08);
+    }
+
+    button.danger {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    input[type="file"] { display: none; }
+
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    input[type="range"] {
+      width: 120px;
+      accent-color: var(--gold);
+    }
+
+    #status {
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      min-height: 1.2em;
+    }
+
+    #status[data-type="error"] { color: var(--danger); }
+
+    footer {
+      margin-top: 2.5rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    footer a { color: var(--gold-dim); text-decoration: none; }
+    footer a:hover { color: var(--gold); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ghibli Client Engine</h1>
+    <p class="subtitle">Real-time Non-AI style transfer &mdash; WebGL2 bilateral + Sobel + paper grain</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="ghibli-canvas" width="1280" height="720"></canvas>
+
+    <div class="controls">
+      <label class="file-btn">
+        Load Video
+        <input type="file" id="video-file" accept="video/*" />
+      </label>
+      <button id="btn-webcam">Use Webcam</button>
+      <button id="btn-start" class="primary" disabled>Start</button>
+      <button id="btn-stop" disabled>Stop</button>
+      <button id="btn-record" disabled>Start Recording</button>
+      <button id="btn-download" disabled>Download</button>
+
+      <div class="slider-group">
+        <span>Edge</span>
+        <input type="range" id="edge-intensity" min="0.05" max="0.8" step="0.01" value="0.25" />
+        <span id="edge-value">0.25</span>
+      </div>
+    </div>
+
+    <div id="status">Initializing engine…</div>
+  </div>
+
+  <footer>
+    100% client-side &middot; Zero AI &middot; Zero server &middot;
+    <a href="https://github.com/Jmaity434/ghibli-client-engine" target="_blank" rel="noopener">GitHub</a>
+  </footer>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
