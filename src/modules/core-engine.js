@@ -1,7 +1,7 @@
 /**
  * GhibliClientEngine
- * High performance client-side video processor without AI dependencies.
- * Implements bilateral smoothing, color quantization, Sobel edges and paper grain compositing.
+ * 100% client-side WebGL2 Ghibli-style processor.
+ * Supports any-size images and videos. No fixed resolution. Zero AI.
  */
 export class GhibliClientEngine {
     constructor(canvasElement, config = {}) {
@@ -22,7 +22,13 @@ export class GhibliClientEngine {
         this.videoElement.playsInline = true;
         this.videoElement.crossOrigin = 'anonymous';
 
+        this.imageElement = new Image();
+        this.imageElement.crossOrigin = 'anonymous';
+
+        this.sourceType = null; // 'video' | 'image' | 'webcam'
         this.edgeIntensity = config.edgeIntensity ?? 0.25;
+        this.shaderBasePath = config.shaderBasePath ?? './src/shaders';
+        this.paperTextureUrl = config.paperTextureUrl ?? './assets/ghibli-grain.jpg';
         this.isProcessing = false;
         this.animationFrameId = null;
 
@@ -31,18 +37,21 @@ export class GhibliClientEngine {
         this.videoTexture = null;
         this.paperTexture = null;
 
-        this.initWebGL();
+        this._ready = this.initWebGL();
+    }
+
+    async ready() {
+        return this._ready;
     }
 
     async initWebGL() {
         const gl = this.gl;
 
-        const vsSource = await this.loadShaderSource('./src/shaders/vertex.vert');
-        const fsSource = await this.loadShaderSource('./src/shaders/ghibli.frag');
+        const vsSource = await this.loadShaderSource(`${this.shaderBasePath}/vertex.vert`);
+        const fsSource = await this.loadShaderSource(`${this.shaderBasePath}/ghibli.frag`);
 
         this.program = this.createProgram(gl, vsSource, fsSource);
 
-        // Full-screen quad
         this.positionBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
@@ -54,17 +63,14 @@ export class GhibliClientEngine {
              1.0,  1.0,
         ]), gl.STATIC_DRAW);
 
-        // Video texture
         this.videoTexture = gl.createTexture();
         this.setupTextureProperties(gl, this.videoTexture);
 
-        // Paper grain texture (fallback solid if missing)
         this.paperTexture = gl.createTexture();
         this.setupTextureProperties(gl, this.paperTexture);
         this.createFallbackPaperTexture(gl);
 
-        // Try to load real paper asset if present
-        this.loadPaperTexture('./assets/ghibli-grain.jpg').catch(() => {
+        this.loadPaperTexture(this.paperTextureUrl).catch(() => {
             console.info('[GhibliEngine] Using procedural paper fallback');
         });
     }
@@ -78,7 +84,6 @@ export class GhibliClientEngine {
     }
 
     createFallbackPaperTexture(gl) {
-        // Simple 2x2 beige paper-like noise
         const data = new Uint8Array([
             220, 210, 190, 255,
             210, 200, 180, 255,
@@ -136,8 +141,65 @@ export class GhibliClientEngine {
         return shader;
     }
 
+    /**
+     * Load any image or video file / URL. No fixed size — canvas matches source dimensions.
+     * @param {File|Blob|string} fileOrUrl
+     * @returns {Promise<{width:number, height:number, type:'image'|'video'}>}
+     */
+    async loadSource(fileOrUrl) {
+        await this.ready();
+
+        const isFile = fileOrUrl instanceof File || fileOrUrl instanceof Blob;
+        const mime = isFile ? (fileOrUrl.type || '') : '';
+        const name = isFile && fileOrUrl.name ? fileOrUrl.name.toLowerCase() : '';
+
+        const looksImage =
+            mime.startsWith('image/') ||
+            /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(name) ||
+            (!isFile && /\.(jpe?g|png|webp|gif|bmp|avif)(\?|$)/i.test(String(fileOrUrl)));
+
+        if (looksImage) {
+            return this.loadSourceImage(fileOrUrl);
+        }
+        return this.loadSourceVideo(fileOrUrl);
+    }
+
+    loadSourceImage(fileOrUrl) {
+        return new Promise((resolve, reject) => {
+            this.stopEngine();
+            this.sourceType = 'image';
+
+            if (fileOrUrl instanceof File || fileOrUrl instanceof Blob) {
+                this.imageElement.src = URL.createObjectURL(fileOrUrl);
+            } else {
+                this.imageElement.src = fileOrUrl;
+            }
+
+            this.imageElement.onload = () => {
+                const w = this.imageElement.naturalWidth || this.imageElement.width;
+                const h = this.imageElement.naturalHeight || this.imageElement.height;
+                if (!w || !h) {
+                    reject(new Error('Image has zero dimensions'));
+                    return;
+                }
+                this.canvas.width = w;
+                this.canvas.height = h;
+                resolve({ width: w, height: h, type: 'image' });
+            };
+            this.imageElement.onerror = () => reject(new Error('Image load failed'));
+        });
+    }
+
     loadSourceVideo(fileOrUrl) {
         return new Promise((resolve, reject) => {
+            this.stopEngine();
+            this.sourceType = 'video';
+
+            if (this.videoElement.srcObject) {
+                this.videoElement.srcObject.getTracks().forEach(t => t.stop());
+                this.videoElement.srcObject = null;
+            }
+
             if (fileOrUrl instanceof File || fileOrUrl instanceof Blob) {
                 this.videoElement.src = URL.createObjectURL(fileOrUrl);
             } else {
@@ -145,40 +207,50 @@ export class GhibliClientEngine {
             }
 
             this.videoElement.onloadeddata = () => {
-                this.canvas.width = this.videoElement.videoWidth || 1280;
-                this.canvas.height = this.videoElement.videoHeight || 720;
-                resolve({
-                    width: this.canvas.width,
-                    height: this.canvas.height
-                });
+                const w = this.videoElement.videoWidth;
+                const h = this.videoElement.videoHeight;
+                if (!w || !h) {
+                    reject(new Error('Video has zero dimensions'));
+                    return;
+                }
+                this.canvas.width = w;
+                this.canvas.height = h;
+                resolve({ width: w, height: h, type: 'video' });
             };
             this.videoElement.onerror = () => reject(new Error('Video load failed'));
         });
     }
 
     async startWebcam() {
+        await this.ready();
+        this.stopEngine();
+        this.sourceType = 'webcam';
+
         const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+            video: { facingMode: 'user' },
             audio: false
         });
         this.videoElement.srcObject = stream;
         await this.videoElement.play();
 
-        this.canvas.width = this.videoElement.videoWidth || 1280;
-        this.canvas.height = this.videoElement.videoHeight || 720;
+        const w = this.videoElement.videoWidth || 640;
+        const h = this.videoElement.videoHeight || 480;
+        this.canvas.width = w;
+        this.canvas.height = h;
 
-        return {
-            width: this.canvas.width,
-            height: this.canvas.height
-        };
+        return { width: w, height: h, type: 'webcam' };
     }
 
     startRenderLoop() {
         if (this.isProcessing) return;
+        if (!this.sourceType) return;
+
         this.isProcessing = true;
 
-        if (this.videoElement.paused) {
-            this.videoElement.play().catch(() => {});
+        if (this.sourceType === 'video' || this.sourceType === 'webcam') {
+            if (this.videoElement.paused) {
+                this.videoElement.play().catch(() => {});
+            }
         }
 
         const gl = this.gl;
@@ -187,6 +259,8 @@ export class GhibliClientEngine {
         const intensityLoc = gl.getUniformLocation(this.program, 'u_edgeIntensity');
         const videoTexLoc = gl.getUniformLocation(this.program, 'u_videoTexture');
         const paperTexLoc = gl.getUniformLocation(this.program, 'u_ghibliTexture');
+
+        const sourceEl = this.sourceType === 'image' ? this.imageElement : this.videoElement;
 
         const render = () => {
             if (!this.isProcessing) return;
@@ -197,13 +271,11 @@ export class GhibliClientEngine {
 
             gl.useProgram(this.program);
 
-            // Upload current video frame
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, this.videoTexture);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.videoElement);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceEl);
             gl.uniform1i(videoTexLoc, 0);
 
-            // Paper texture
             gl.activeTexture(gl.TEXTURE1);
             gl.bindTexture(gl.TEXTURE_2D, this.paperTexture);
             gl.uniform1i(paperTexLoc, 1);
@@ -217,10 +289,21 @@ export class GhibliClientEngine {
 
             gl.drawArrays(gl.TRIANGLES, 0, 6);
 
+            // For still images, one frame is enough; keep loop for video/webcam
+            if (this.sourceType === 'image') {
+                this.isProcessing = false;
+                return;
+            }
             this.animationFrameId = requestAnimationFrame(render);
         };
 
         this.animationFrameId = requestAnimationFrame(render);
+    }
+
+    /** Process a still image once and keep result on canvas */
+    processStill() {
+        if (this.sourceType !== 'image') return;
+        this.startRenderLoop();
     }
 
     stopEngine() {
@@ -238,9 +321,20 @@ export class GhibliClientEngine {
 
     setEdgeIntensity(value) {
         this.edgeIntensity = Math.max(0.05, Math.min(1.0, value));
+        // Re-process still image when slider changes
+        if (this.sourceType === 'image' && this.imageElement.complete) {
+            this.processStill();
+        }
     }
 
     getCanvasStream(fps = 60) {
         return this.canvas.captureStream(fps);
+    }
+
+    /** Export current canvas as PNG blob */
+    async exportImage(type = 'image/png', quality = 0.92) {
+        return new Promise((resolve) => {
+            this.canvas.toBlob((blob) => resolve(blob), type, quality);
+        });
     }
 }
