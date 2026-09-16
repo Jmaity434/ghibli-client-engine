@@ -66,14 +66,23 @@
       padding: 1rem;
       box-shadow: 0 12px 40px rgba(0,0,0,0.45);
     }
-    #ghibli-canvas {
+    .canvas-wrap {
       width: 100%;
-      max-height: 70vh;
-      height: auto;
+      min-height: 240px;
       background: #000;
       border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #ghibli-canvas {
       display: block;
-      object-fit: contain;
+      max-width: 100%;
+      max-height: 70vh;
+      width: auto;
+      height: auto;
+      background: #111;
     }
     .hint { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.75rem; }
 
@@ -135,7 +144,7 @@
       font-size: 0.8rem;
       color: #d4cbb8;
       margin: 0.75rem 0;
-      white-space: pre;
+      white-space: pre-wrap;
     }
 
     .pricing-grid {
@@ -188,23 +197,24 @@
       <p class="subtitle" data-i18n="subtitle">Real-time Non-AI style transfer — image & video, any size, 100% browser</p>
     </header>
 
-    <!-- DEMO -->
     <section id="demo">
       <h2 data-i18n="demo_heading">Try in your browser</h2>
       <p class="hint" data-i18n="demo_hint">Upload any image or video (no size limit). Everything runs on your device — nothing is uploaded.</p>
       <div class="stage">
-        <canvas id="ghibli-canvas" width="1280" height="720"></canvas>
+        <div class="canvas-wrap">
+          <canvas id="ghibli-canvas" width="640" height="360"></canvas>
+        </div>
         <div class="controls">
           <label class="file-btn">
             <span data-i18n="load_media">Load Image / Video</span>
             <input type="file" id="media-file" accept="image/*,video/*" />
           </label>
-          <button id="btn-webcam" data-i18n="webcam">Webcam</button>
-          <button id="btn-start" class="primary" disabled data-i18n="start">Start</button>
-          <button id="btn-stop" disabled data-i18n="stop">Stop</button>
-          <button id="btn-record" disabled data-i18n="record">Start Recording</button>
-          <button id="btn-download" disabled data-i18n="download">Download</button>
-          <button id="btn-download-img" disabled data-i18n="download_image">Download PNG</button>
+          <button type="button" id="btn-webcam" data-i18n="webcam">Webcam</button>
+          <button type="button" id="btn-start" class="primary" disabled data-i18n="start">Start</button>
+          <button type="button" id="btn-stop" disabled data-i18n="stop">Stop</button>
+          <button type="button" id="btn-record" disabled data-i18n="record">Start Recording</button>
+          <button type="button" id="btn-download" disabled data-i18n="download">Download</button>
+          <button type="button" id="btn-download-img" disabled data-i18n="download_image">Download PNG</button>
           <div class="slider-group">
             <span data-i18n="edge">Edge</span>
             <input type="range" id="edge-intensity" min="0.05" max="0.8" step="0.01" value="0.25" />
@@ -215,7 +225,6 @@
       </div>
     </section>
 
-    <!-- HOW -->
     <section id="how">
       <h2 data-i18n="how_title">How it works</h2>
       <div class="grid-4">
@@ -238,10 +247,9 @@
       </div>
     </section>
 
-    <!-- INTEGRATE -->
     <section id="integrate">
       <h2 data-i18n="integrate_title">Integrate on your website</h2>
-      <p class="hint" data-i18n="integrate_intro">Zero server. Zero AI model. Copy the files and use the ES module.</p>
+      <p class="hint" data-i18n="integrate_intro">Zero server. Zero AI model. Pure JavaScript ES module — works with React, Vue, Next.js, vanilla HTML, or any stack that can load a browser script.</p>
 
       <p><strong data-i18n="integrate_step1">Clone or download the repo</strong></p>
       <div class="code-block">git clone https://github.com/Jmaity434/ghibli-client-engine.git</div>
@@ -250,25 +258,27 @@
 
       <p><strong data-i18n="integrate_step3">Import and use</strong></p>
       <div class="code-block"><canvas id="out"></canvas>
+<input type="file" id="media" accept="image/*,video/*" />
 <script type="module">
   import { GhibliClientEngine } from './src/modules/core-engine.js';
 
-  const engine = new GhibliClientEngine(document.getElementById('out'), {
+  const canvas = document.getElementById('out');
+  const media = document.getElementById('media');
+  const engine = new GhibliClientEngine(canvas, {
     edgeIntensity: 0.25,
-    shaderBasePath: './src/shaders'   // point to your hosted shaders
+    shaderBasePath: './src/shaders'
   });
   await engine.ready();
 
-  // Any image or video, any size
-  await engine.loadSource(fileInput.files[0]);
-  engine.startRenderLoop();
-
-  // Still image → PNG
-  // const blob = await engine.exportImage();
+  media.addEventListener('change', async () => {
+    const file = media.files[0];
+    if (!file) return;
+    await engine.loadSource(file); // image or video, any size
+    engine.startRenderLoop();
+  });
 </script></div>
     </section>
 
-    <!-- PRICING / BILL GATE -->
     <section id="pricing">
       <h2 data-i18n="pricing_title">Simple access</h2>
       <div class="pricing-grid">
