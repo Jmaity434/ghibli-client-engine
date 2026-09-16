@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ghibli Client Engine — Real-time Non-AI Style Transfer</title>
-  <meta name="description" content="100% client-side WebGL2 Ghibli-style video processor. Bilateral smoothing, Sobel edges, paper grain. Zero AI." />
+  <title>Ghibli Client Engine — Non-AI Style Transfer</title>
+  <meta name="description" content="100% client-side WebGL2 Ghibli-style processor. Image & video, any size. Zero AI. Zero server. Test in browser, integrate anywhere." />
   <style>
     :root {
       --bg: #0c0b0a;
@@ -16,37 +16,47 @@
       --muted: #9a9080;
       --danger: #c45c4a;
     }
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
       background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 2rem 1rem;
+      line-height: 1.5;
+    }
+    a { color: var(--gold-dim); text-decoration: none; }
+    a:hover { color: var(--gold); }
+
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(12,11,10,0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.25rem;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .topbar nav { display: flex; gap: 1.25rem; flex-wrap: wrap; font-size: 0.9rem; }
+    .topbar nav a { color: var(--muted); }
+    .topbar nav a:hover { color: var(--gold); }
+    .lang-wrap { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--muted); }
+    select#lang-select {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      padding: 0.3rem 0.5rem; border-radius: 6px;
     }
 
-    header {
-      text-align: center;
-      margin-bottom: 2rem;
-      max-width: 720px;
-    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 2rem 1rem 4rem; }
 
-    h1 {
-      font-size: 1.75rem;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      color: var(--gold);
-      margin-bottom: 0.35rem;
+    header.hero { text-align: center; margin-bottom: 2.5rem; }
+    header.hero h1 {
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      font-weight: 600; letter-spacing: -0.02em; color: var(--gold);
     }
+    header.hero .subtitle { color: var(--muted); margin-top: 0.4rem; font-size: 1rem; }
 
-    .subtitle {
-      color: var(--muted);
-      font-size: 0.95rem;
+    section { margin-bottom: 3.5rem; }
+    section h2 {
+      font-size: 1.25rem; color: var(--gold); margin-bottom: 1rem;
+      border-bottom: 1px solid var(--border); padding-bottom: 0.5rem;
     }
 
     .stage {
@@ -55,133 +65,231 @@
       border-radius: 12px;
       padding: 1rem;
       box-shadow: 0 12px 40px rgba(0,0,0,0.45);
-      max-width: 960px;
-      width: 100%;
     }
-
     #ghibli-canvas {
       width: 100%;
-      max-height: 540px;
+      max-height: 70vh;
+      height: auto;
       background: #000;
       border-radius: 8px;
       display: block;
-      aspect-ratio: 16/9;
       object-fit: contain;
     }
+    .hint { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.75rem; }
 
     .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-      margin-top: 1.25rem;
-      align-items: center;
+      display: flex; flex-wrap: wrap; gap: 0.6rem;
+      margin-top: 1rem; align-items: center;
     }
-
     button, label.file-btn {
       background: var(--surface);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 0.55rem 1rem;
+      padding: 0.5rem 0.9rem;
       border-radius: 8px;
-      font-size: 0.875rem;
+      font-size: 0.85rem;
       cursor: pointer;
       transition: border-color 0.15s, background 0.15s;
     }
-
     button:hover:not(:disabled), label.file-btn:hover {
-      border-color: var(--gold-dim);
-      background: #1c1915;
+      border-color: var(--gold-dim); background: #1c1915;
     }
-
-    button:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
     button.primary {
       background: linear-gradient(135deg, #c9a227, #a8841c);
-      border-color: transparent;
-      color: #0c0b0a;
-      font-weight: 600;
+      border-color: transparent; color: #0c0b0a; font-weight: 600;
     }
-
-    button.primary:hover:not(:disabled) {
-      filter: brightness(1.08);
-    }
-
-    button.danger {
-      border-color: var(--danger);
-      color: var(--danger);
-    }
-
+    button.primary:hover:not(:disabled) { filter: brightness(1.08); }
     input[type="file"] { display: none; }
-
     .slider-group {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-left: auto;
-      color: var(--muted);
-      font-size: 0.85rem;
+      display: flex; align-items: center; gap: 0.45rem;
+      margin-left: auto; color: var(--muted); font-size: 0.85rem;
     }
-
-    input[type="range"] {
-      width: 120px;
-      accent-color: var(--gold);
-    }
-
+    input[type="range"] { width: 110px; accent-color: var(--gold); }
     #status {
-      margin-top: 1rem;
-      font-size: 0.85rem;
-      color: var(--muted);
-      min-height: 1.2em;
+      margin-top: 0.85rem; font-size: 0.85rem; color: var(--muted); min-height: 1.2em;
     }
-
     #status[data-type="error"] { color: var(--danger); }
 
-    footer {
-      margin-top: 2.5rem;
-      color: var(--muted);
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.1rem;
+    }
+    .card h3 { font-size: 0.95rem; color: var(--gold); margin-bottom: 0.35rem; }
+    .card p { font-size: 0.85rem; color: var(--muted); }
+
+    .code-block {
+      background: #0a0908;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 0.8rem;
-      text-align: center;
+      color: #d4cbb8;
+      margin: 0.75rem 0;
+      white-space: pre;
     }
 
-    footer a { color: var(--gold-dim); text-decoration: none; }
-    footer a:hover { color: var(--gold); }
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+    .price-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.4rem;
+      text-align: center;
+    }
+    .price-card.highlight { border-color: var(--gold-dim); }
+    .price-card h3 { color: var(--gold); margin-bottom: 0.5rem; }
+    .price-card .price {
+      font-size: 1.5rem; font-weight: 700; color: var(--text); margin: 0.5rem 0;
+    }
+    .price-card p { font-size: 0.85rem; color: var(--muted); }
+    .price-note { margin-top: 1rem; font-size: 0.8rem; color: var(--muted); text-align: center; }
+
+    footer.site-footer {
+      text-align: center; color: var(--muted); font-size: 0.8rem;
+      padding: 2rem 1rem; border-top: 1px solid var(--border);
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Ghibli Client Engine</h1>
-    <p class="subtitle">Real-time Non-AI style transfer &mdash; WebGL2 bilateral + Sobel + paper grain</p>
-  </header>
-
-  <div class="stage">
-    <canvas id="ghibli-canvas" width="1280" height="720"></canvas>
-
-    <div class="controls">
-      <label class="file-btn">
-        Load Video
-        <input type="file" id="video-file" accept="video/*" />
-      </label>
-      <button id="btn-webcam">Use Webcam</button>
-      <button id="btn-start" class="primary" disabled>Start</button>
-      <button id="btn-stop" disabled>Stop</button>
-      <button id="btn-record" disabled>Start Recording</button>
-      <button id="btn-download" disabled>Download</button>
-
-      <div class="slider-group">
-        <span>Edge</span>
-        <input type="range" id="edge-intensity" min="0.05" max="0.8" step="0.01" value="0.25" />
-        <span id="edge-value">0.25</span>
-      </div>
+  <div class="topbar">
+    <nav>
+      <a href="#demo" data-i18n="nav_demo">Live Demo</a>
+      <a href="#how" data-i18n="nav_how">How it works</a>
+      <a href="#integrate" data-i18n="nav_integrate">Integrate</a>
+      <a href="#pricing" data-i18n="nav_pricing">Pricing</a>
+      <a href="https://github.com/Jmaity434/ghibli-client-engine" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <div class="lang-wrap">
+      <span data-i18n="lang">Language</span>
+      <select id="lang-select">
+        <option value="en">English</option>
+        <option value="bn">বাংলা</option>
+      </select>
     </div>
-
-    <div id="status">Initializing engine…</div>
   </div>
 
-  <footer>
-    100% client-side &middot; Zero AI &middot; Zero server &middot;
+  <div class="wrap">
+    <header class="hero">
+      <h1 data-i18n="title">Ghibli Client Engine</h1>
+      <p class="subtitle" data-i18n="subtitle">Real-time Non-AI style transfer — image & video, any size, 100% browser</p>
+    </header>
+
+    <!-- DEMO -->
+    <section id="demo">
+      <h2 data-i18n="demo_heading">Try in your browser</h2>
+      <p class="hint" data-i18n="demo_hint">Upload any image or video (no size limit). Everything runs on your device — nothing is uploaded.</p>
+      <div class="stage">
+        <canvas id="ghibli-canvas" width="1280" height="720"></canvas>
+        <div class="controls">
+          <label class="file-btn">
+            <span data-i18n="load_media">Load Image / Video</span>
+            <input type="file" id="media-file" accept="image/*,video/*" />
+          </label>
+          <button id="btn-webcam" data-i18n="webcam">Webcam</button>
+          <button id="btn-start" class="primary" disabled data-i18n="start">Start</button>
+          <button id="btn-stop" disabled data-i18n="stop">Stop</button>
+          <button id="btn-record" disabled data-i18n="record">Start Recording</button>
+          <button id="btn-download" disabled data-i18n="download">Download</button>
+          <button id="btn-download-img" disabled data-i18n="download_image">Download PNG</button>
+          <div class="slider-group">
+            <span data-i18n="edge">Edge</span>
+            <input type="range" id="edge-intensity" min="0.05" max="0.8" step="0.01" value="0.25" />
+            <span id="edge-value">0.25</span>
+          </div>
+        </div>
+        <div id="status">Initializing…</div>
+      </div>
+    </section>
+
+    <!-- HOW -->
+    <section id="how">
+      <h2 data-i18n="how_title">How it works</h2>
+      <div class="grid-4">
+        <div class="card">
+          <h3 data-i18n="how_1_t">1. Open this page</h3>
+          <p data-i18n="how_1_d">No install. No account. Works in Chrome, Edge, Firefox, Safari (WebGL2).</p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="how_2_t">2. Drop image or video</h3>
+          <p data-i18n="how_2_d">Any resolution. Portrait, landscape, 4K — canvas matches source size automatically.</p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="how_3_t">3. See the style live</h3>
+          <p data-i18n="how_3_d">Bilateral smooth + 4-level cell shading + sepia ink + paper grain + warm tint. All on GPU.</p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="how_4_t">4. Export or integrate</h3>
+          <p data-i18n="how_4_d">Download the result, or add the engine to your own site with a few lines of code.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- INTEGRATE -->
+    <section id="integrate">
+      <h2 data-i18n="integrate_title">Integrate on your website</h2>
+      <p class="hint" data-i18n="integrate_intro">Zero server. Zero AI model. Copy the files and use the ES module.</p>
+
+      <p><strong data-i18n="integrate_step1">Clone or download the repo</strong></p>
+      <div class="code-block">git clone https://github.com/Jmaity434/ghibli-client-engine.git</div>
+
+      <p><strong data-i18n="integrate_step2">Host the src/ folder (or serve from CDN / static host)</strong></p>
+
+      <p><strong data-i18n="integrate_step3">Import and use</strong></p>
+      <div class="code-block"><canvas id="out"></canvas>
+<script type="module">
+  import { GhibliClientEngine } from './src/modules/core-engine.js';
+
+  const engine = new GhibliClientEngine(document.getElementById('out'), {
+    edgeIntensity: 0.25,
+    shaderBasePath: './src/shaders'   // point to your hosted shaders
+  });
+  await engine.ready();
+
+  // Any image or video, any size
+  await engine.loadSource(fileInput.files[0]);
+  engine.startRenderLoop();
+
+  // Still image → PNG
+  // const blob = await engine.exportImage();
+</script></div>
+    </section>
+
+    <!-- PRICING / BILL GATE -->
+    <section id="pricing">
+      <h2 data-i18n="pricing_title">Simple access</h2>
+      <div class="pricing-grid">
+        <div class="price-card highlight">
+          <h3 data-i18n="pricing_free_t">Browser Demo</h3>
+          <div class="price" data-i18n="pricing_free_price">Free</div>
+          <p data-i18n="pricing_free_d">Unlimited testing on this GitHub Pages site. Image + video. Any size.</p>
+        </div>
+        <div class="price-card">
+          <h3 data-i18n="pricing_dev_t">Self-host / Integrate</h3>
+          <div class="price" data-i18n="pricing_dev_price">Free (MIT)</div>
+          <p data-i18n="pricing_dev_d">MIT license. Use on your product, client sites, or internal tools. No royalty.</p>
+        </div>
+      </div>
+      <p class="price-note" data-i18n="pricing_note">Commercial support / custom shaders available on request.</p>
+    </section>
+  </div>
+
+  <footer class="site-footer">
+    <span data-i18n="footer">100% client-side · Zero AI · Zero server · Image & Video any size</span>
+    &nbsp;·&nbsp;
     <a href="https://github.com/Jmaity434/ghibli-client-engine" target="_blank" rel="noopener">GitHub</a>
   </footer>
 
