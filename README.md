@@ -1,114 +1,78 @@
 # Ghibli Client Engine
 
-**Production-ready Non-AI Client-Side Ghibli Canvas Engine**
+**Non-AI, 100% client-side Ghibli-style processor for images & videos**
 
-Real-time video-to-Ghibli style rendering pipeline running 100% inside the browser using WebGL2. Zero server overhead. Zero AI/ML dependencies.
+Live demo: **https://jmaity434.github.io/ghibli-client-engine/**
+
+- Image **and** video
+- **Any size** (no fixed resolution — canvas matches source)
+- Multi-language UI (English + বাংলা, easy to add more)
+- Test fully in the browser — then integrate on your own site
+- Zero AI, zero server, MIT license
 
 ## Features
 
-- **Bilateral + Quantization Filter** — Smooth anime/paint look without neural nets
-- **Sobel Edge Detection** — Classic hand-drawn ink outlines
-- **Layered Canvas Compositing** — Paper grain texture + processed frame + line art
-- **60 FPS Target** on modern hardware (up to 1080p)
-- **MediaRecorder Integration** — Record & download WebM directly from canvas
-- **Pure Client-Side** — No backend, no API keys, no model downloads
+| Feature | Detail |
+|--------|--------|
+| Media | Image (JPEG/PNG/WebP/…) + Video + Webcam |
+| Size | No fixed size — any resolution |
+| Style | Bilateral smooth → 4-level cell shading → sepia ink → multiply paper grain → warm tint |
+| Export | PNG for stills, WebM for video recording |
+| i18n | EN + BN built-in; add languages in `src/i18n.js` |
+| Integrate | ES module, a few lines of code |
 
-## Architecture
+## Quick test (browser only)
 
-```
-Raw HTML5 Video Stream
-        ↓
-Canvas2D Scratchpad (frame extraction)
-        ↓
-WebGL2 Shader Pipeline
-  • Bilateral / Anisotropic Smooth
-  • Sobel Edge Engine
-  • Color Quantization + LUT
-        ↓
-Layered Compositing
-  • Base: Ghibli paper grain
-  • Middle: Quantized frame
-  • Top: Sobel lines + vignette
-        ↓
-Final Canvas / MediaRecorder
-```
+Open the [GitHub Pages demo](https://jmaity434.github.io/ghibli-client-engine/), load any image or video, press **Start**. Nothing is uploaded.
 
-## Quick Start
+## Integrate on your website
 
 ```bash
-# Clone
 git clone https://github.com/Jmaity434/ghibli-client-engine.git
-cd ghibli-client-engine
-
-# Serve locally (any static server)
-npx serve .
-# or
-python -m http.server 8080
 ```
 
-Open `http://localhost:8080` and load a video or use your webcam.
+Host the `src/` folder (static host / CDN). Then:
 
-## Project Structure
+```html
+<canvas id="out"></canvas>
+<script type="module">
+  import { GhibliClientEngine } from './src/modules/core-engine.js';
 
-```
-.
-├── .github/workflows/deploy.yml   # GitHub Pages auto-deploy
-├── assets/
-│   ├── ghibli-grain.jpg             # Seamless paper texture (add your own)
-│   └── reference-presets/           # Future LUT / style presets
-├── src/
-│   ├── shaders/
-│   │   ├── vertex.vert
-│   │   └── ghibli.frag               # Core bilateral + Sobel logic
-│   ├── modules/
-│   │   ├── core-engine.js            # WebGL2 context + render loop
-│   │   └── record-engine.js          # MediaRecorder wrapper
-│   └── app.js                      # UI bindings
-├── index.html
-└── README.md
-```
+  const engine = new GhibliClientEngine(document.getElementById('out'), {
+    edgeIntensity: 0.25,
+    shaderBasePath: './src/shaders'
+  });
+  await engine.ready();
 
-## Usage (Programmatic)
+  // File can be image or video — any size
+  await engine.loadSource(fileInput.files[0]);
+  engine.startRenderLoop();
 
-```js
-import { GhibliClientEngine } from './src/modules/core-engine.js';
-
-const canvas = document.getElementById('ghibli-canvas');
-const engine = new GhibliClientEngine(canvas, {
-  edgeIntensity: 0.25
-});
-
-// Load a video file
-await engine.loadSourceVideo(fileInput.files[0]);
-engine.startRenderLoop();
-
-// Record
-engine.startRecording();
-// ... later
-const url = await engine.stopRecordingAndDownload();
+  // Still image export
+  // const blob = await engine.exportImage();
+</script>
 ```
 
-## Shader Notes
+No npm install required for basic use. No backend. No model download.
 
-The fragment shader implements:
+## Project structure
 
-1. **Bilateral-style smoothing** (5×5 neighborhood with spatial + color distance weights)
-2. **Color quantization** to 8 levels for the classic flat-color Ghibli look
-3. **Sobel edge extraction** with dark brown ink outlines
-4. **Paper grain blending** via `u_ghibliTexture`
+```
+src/
+  shaders/          vertex.vert + ghibli.frag
+  modules/
+    core-engine.js  main WebGL2 engine (image + video, any size)
+    record-engine.js
+  i18n.js           EN + BN strings (extend freely)
+  app.js            demo UI controller
+index.html          product landing + live demo
+assets/             optional paper grain texture
+```
 
-Tune `u_edgeIntensity` (default `0.25`) for thicker/thinner lines.
+## Adding a language
 
-## Deployment
-
-The included GitHub Actions workflow deploys to GitHub Pages on every push to `main`.
-
-Enable Pages in repository settings → Pages → Source: GitHub Actions.
+Edit `src/i18n.js` — copy the `en` block, translate keys, add the language code to the `<select>` in `index.html`.
 
 ## License
 
 MIT — free for personal and commercial use.
-
----
-
-Built for maximum client-side performance. No AI. No servers. Just pure WebGL2.
