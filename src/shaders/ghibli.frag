@@ -12,7 +12,7 @@ uniform float u_edgeIntensity;
 void main() {
     vec2 onePixel = vec2(1.0) / u_resolution;
     
-    // 1. Bilateral Smoothing / Quantization Filter Simulation
+    // 1. Bilateral Smoothing
     vec4 centerColor = texture(u_videoTexture, v_texCoord);
     vec3 colorAcc = vec3(0.0);
     float weightAcc = 0.0;
@@ -22,7 +22,6 @@ void main() {
             vec2 offset = vec2(float(x), float(y)) * onePixel;
             vec4 sampleCol = texture(u_videoTexture, v_texCoord + offset);
             
-            // Spatial & Color Intensity Weighting
             float dist = length(offset * u_resolution);
             float colorDist = distance(centerColor.rgb, sampleCol.rgb);
             float weight = exp(-0.5 * (dist * dist / 4.0 + colorDist * colorDist / 0.04));
@@ -34,10 +33,10 @@ void main() {
     
     vec3 smoothedColor = colorAcc / weightAcc;
     
-    // Quantize Colors to mimic hand-selected palette profiles
-    smoothedColor = floor(smoothedColor * 8.0) / 8.0;
+    // Cell-shading quantization — 4 flat levels for true Ghibli flat-color look
+    smoothedColor = floor(smoothedColor * 4.0) / 4.0;
 
-    // 2. Sobel Edge Extraction Pipeline
+    // 2. Sobel Edge Extraction (thin main borders only)
     float tLeft  = texture(u_videoTexture, v_texCoord + vec2(-onePixel.x,  onePixel.y)).r;
     float tTop   = texture(u_videoTexture, v_texCoord + vec2(0.0,         onePixel.y)).r;
     float tRight = texture(u_videoTexture, v_texCoord + vec2(onePixel.x,  onePixel.y)).r;
@@ -51,14 +50,23 @@ void main() {
     float gy = (tLeft + (2.0 * tTop) + tRight) - (bLeft + (2.0 * bTop) + bRight);
     float edge = sqrt(gx * gx + gy * gy);
 
-    // 3. Multi-layer Blend Configuration
-    vec4 ghibliPaper = texture(u_ghibliTexture, v_texCoord * 2.0); // Tiled paper texture
-    vec3 mixedColor = mix(smoothedColor, ghibliPaper.rgb, 0.15);
-    
-    // Apply line art borders
-    if (edge > u_edgeIntensity) {
-        mixedColor = mix(mixedColor, vec3(0.12, 0.08, 0.08), 0.75); // Dark brown Ghibli ink outline
-    }
+    // Soft threshold so only strong object borders get ink (avoids thick / noisy lines)
+    float inkMask = smoothstep(u_edgeIntensity * 0.6, u_edgeIntensity * 1.4, edge);
 
-    outColor = vec4(mixedColor, 1.0);
+    // 3. Paper grain — Multiply blend (preserves luminosity, adds vintage paper feel)
+    vec3 grainColor = texture(u_ghibliTexture, v_texCoord * 2.5).rgb;
+    // Normalize grain toward mid-gray so it doesn’t crush the image
+    grainColor = mix(vec3(0.85), grainColor, 0.55);
+    vec3 mixedColor = smoothedColor * grainColor;
+
+    // 4. Warm nostalgic / golden-hour tint (boost R+G, slight blue reduction)
+    mixedColor.r = min(mixedColor.r * 1.08, 1.0);
+    mixedColor.g = min(mixedColor.g * 1.04, 1.0);
+    mixedColor.b = mixedColor.b * 0.92;
+
+    // Soft sepia / dark-chocolate ink outline (#2B1E16 ≈ vec3(0.169, 0.118, 0.086))
+    vec3 inkColor = vec3(0.169, 0.118, 0.086);
+    mixedColor = mix(mixedColor, inkColor, inkMask * 0.82);
+
+    outColor = vec4(clamp(mixedColor, 0.0, 1.0), 1.0);
 }
