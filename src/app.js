@@ -1,6 +1,6 @@
 import { GhibliClientEngine } from './modules/core-engine.js';
 import { RecordEngine } from './modules/record-engine.js';
-import { t, detectLang, STRINGS } from './i18n.js';
+import { t, detectLang } from './i18n.js';
 
 let lang = detectLang();
 let engine = null;
@@ -22,6 +22,7 @@ const btnDownloadImg = document.getElementById('btn-download-img');
 const langSelect = document.getElementById('lang-select');
 
 function setStatus(msg, type = 'info') {
+  if (!statusEl) return;
   statusEl.textContent = msg;
   statusEl.dataset.type = type;
 }
@@ -40,9 +41,13 @@ function fill(key, vars) {
 }
 
 async function initEngine() {
+  if (!canvas) {
+    setStatus('Canvas element missing', 'error');
+    return;
+  }
   try {
     engine = new GhibliClientEngine(canvas, {
-      edgeIntensity: parseFloat(edgeSlider.value)
+      edgeIntensity: parseFloat(edgeSlider?.value || '0.25')
     });
     await engine.ready();
     recorder = new RecordEngine(canvas);
@@ -60,14 +65,14 @@ langSelect?.addEventListener('change', () => {
   if (!engine?.isProcessing) setStatus(fill('status_ready'));
 });
 
-edgeSlider.addEventListener('input', () => {
+edgeSlider?.addEventListener('input', () => {
   const val = parseFloat(edgeSlider.value);
-  edgeValue.textContent = val.toFixed(2);
+  if (edgeValue) edgeValue.textContent = val.toFixed(2);
   if (engine) engine.setEdgeIntensity(val);
 });
 
-fileInput.addEventListener('change', async (e) => {
-  const file = e.target.files[0];
+fileInput?.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
   if (!file || !engine) return;
 
   setStatus(fill('status_loading'));
@@ -75,83 +80,93 @@ fileInput.addEventListener('change', async (e) => {
     const { width, height, type } = await engine.loadSource(file);
     lastType = type;
     setStatus(fill('status_loaded', { w: width, h: height, type }));
-    btnStart.disabled = false;
-    btnDownloadImg.disabled = type !== 'image';
-    btnRecord.disabled = true;
+
+    if (btnStart) btnStart.disabled = false;
+    if (btnDownloadImg) btnDownloadImg.disabled = type !== 'image';
+    if (btnRecord) btnRecord.disabled = true;
+
+    // Auto-render still images so the user sees the result immediately
+    if (type === 'image') {
+      engine.startRenderLoop();
+      setStatus(fill('status_rendering'));
+      if (btnStart) btnStart.disabled = true;
+      if (btnStop) btnStop.disabled = false;
+      if (btnDownloadImg) btnDownloadImg.disabled = false;
+    }
   } catch (err) {
     setStatus(fill('status_err_media'), 'error');
     console.error(err);
   }
 });
 
-btnWebcam.addEventListener('click', async () => {
+btnWebcam?.addEventListener('click', async () => {
   if (!engine) return;
   setStatus(fill('status_webcam'));
   try {
     const { width, height, type } = await engine.startWebcam();
     lastType = type;
     setStatus(fill('status_webcam_ok', { w: width, h: height }));
-    btnStart.disabled = false;
-    btnDownloadImg.disabled = true;
+    if (btnStart) btnStart.disabled = false;
+    if (btnDownloadImg) btnDownloadImg.disabled = true;
   } catch (err) {
     setStatus(fill('status_err_cam'), 'error');
   }
 });
 
-btnStart.addEventListener('click', () => {
+btnStart?.addEventListener('click', () => {
   if (!engine) return;
   engine.startRenderLoop();
   setStatus(fill('status_rendering'));
   btnStart.disabled = true;
-  btnStop.disabled = false;
-  btnRecord.disabled = lastType === 'image';
-  if (lastType === 'image') {
-    btnDownloadImg.disabled = false;
-  }
+  if (btnStop) btnStop.disabled = false;
+  if (btnRecord) btnRecord.disabled = lastType === 'image';
+  if (lastType === 'image' && btnDownloadImg) btnDownloadImg.disabled = false;
 });
 
-btnStop.addEventListener('click', () => {
+btnStop?.addEventListener('click', () => {
   if (!engine) return;
   engine.stopEngine();
-  if (isRecording) {
+  if (isRecording && recorder) {
     recorder.stop();
     isRecording = false;
-    btnRecord.textContent = fill('record');
+    if (btnRecord) btnRecord.textContent = fill('record');
   }
   setStatus(fill('status_stopped'));
-  btnStart.disabled = false;
-  btnStop.disabled = true;
-  btnRecord.disabled = true;
-  btnDownload.disabled = true;
+  if (btnStart) btnStart.disabled = false;
+  if (btnStop) btnStop.disabled = true;
+  if (btnRecord) btnRecord.disabled = true;
+  if (btnDownload) btnDownload.disabled = true;
 });
 
-btnRecord.addEventListener('click', () => {
+btnRecord?.addEventListener('click', () => {
   if (!recorder) return;
 
   if (!isRecording) {
     recorder.start();
     isRecording = true;
     btnRecord.textContent = fill('stop_record');
-    btnDownload.disabled = true;
+    if (btnDownload) btnDownload.disabled = true;
     setStatus(fill('status_recording'));
   } else {
     recorder.stop().then(() => {
       isRecording = false;
       btnRecord.textContent = fill('record');
-      btnDownload.disabled = false;
+      if (btnDownload) btnDownload.disabled = false;
       setStatus(fill('status_rec_done'));
     });
   }
 });
 
-btnDownload.addEventListener('click', async () => {
+btnDownload?.addEventListener('click', async () => {
   if (!recorder) return;
   setStatus(fill('status_download'));
   await recorder.stopAndDownload();
 });
 
-btnDownloadImg.addEventListener('click', async () => {
+btnDownloadImg?.addEventListener('click', async () => {
   if (!engine) return;
+  // Ensure latest frame is drawn
+  if (lastType === 'image') engine.processStill();
   const blob = await engine.exportImage();
   if (!blob) return;
   const url = URL.createObjectURL(blob);
@@ -163,7 +178,6 @@ btnDownloadImg.addEventListener('click', async () => {
   setStatus(fill('status_download'));
 });
 
-// Smooth scroll for nav
 document.querySelectorAll('a[href^="#"]').forEach((a) => {
   a.addEventListener('click', (e) => {
     const id = a.getAttribute('href').slice(1);
