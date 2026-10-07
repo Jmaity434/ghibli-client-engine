@@ -13,6 +13,7 @@ const statusEl = document.getElementById('status');
 const edgeSlider = document.getElementById('edge-intensity');
 const edgeValue = document.getElementById('edge-value');
 const fileInput = document.getElementById('media-file');
+const btnSample = document.getElementById('btn-sample');
 const btnWebcam = document.getElementById('btn-webcam');
 const btnStart = document.getElementById('btn-start');
 const btnStop = document.getElementById('btn-stop');
@@ -93,6 +94,86 @@ fileInput?.addEventListener('change', async (e) => {
       if (btnStop) btnStop.disabled = false;
       if (btnDownloadImg) btnDownloadImg.disabled = false;
     }
+  } catch (err) {
+    setStatus(fill('status_err_media'), 'error');
+    console.error(err);
+  }
+});
+
+function createSampleSceneCanvas() {
+  const c = document.createElement('canvas');
+  c.width = 960;
+  c.height = 540;
+  const ctx = c.getContext('2d');
+
+  // Painterly sky
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, 360);
+  skyGrad.addColorStop(0, '#4285f4');
+  skyGrad.addColorStop(0.55, '#87ceeb');
+  skyGrad.addColorStop(1, '#ffeedd');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, 960, 540);
+
+  // Soft sun
+  ctx.fillStyle = '#fff6d5';
+  ctx.beginPath();
+  ctx.arc(760, 140, 55, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Distant mountain
+  ctx.fillStyle = '#6b8ca8';
+  ctx.beginPath();
+  ctx.moveTo(0, 360);
+  ctx.lineTo(220, 220);
+  ctx.lineTo(440, 340);
+  ctx.lineTo(680, 190);
+  ctx.lineTo(960, 320);
+  ctx.lineTo(960, 540);
+  ctx.lineTo(0, 540);
+  ctx.closePath();
+  ctx.fill();
+
+  // Rolling green hills
+  ctx.fillStyle = '#5c9a4b';
+  ctx.beginPath();
+  ctx.arc(280, 500, 300, Math.PI, 0);
+  ctx.fill();
+
+  ctx.fillStyle = '#457936';
+  ctx.beginPath();
+  ctx.arc(750, 520, 330, Math.PI, 0);
+  ctx.fill();
+
+  // Fluffy clouds
+  function drawCloud(cx, cy, s) {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 30 * s, 0, Math.PI * 2);
+    ctx.arc(cx + 28 * s, cy - 10 * s, 36 * s, 0, Math.PI * 2);
+    ctx.arc(cx + 60 * s, cy, 28 * s, 0, Math.PI * 2);
+    ctx.arc(cx + 32 * s, cy + 10 * s, 22 * s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  drawCloud(220, 150, 1.4);
+  drawCloud(540, 100, 1.1);
+
+  return c;
+}
+
+btnSample?.addEventListener('click', async () => {
+  if (!engine) return;
+  setStatus(fill('status_loading'));
+  const sampleCanvas = createSampleSceneCanvas();
+  try {
+    const { width, height, type } = await engine.loadSource(sampleCanvas);
+    lastType = type;
+    setStatus(fill('status_loaded', { w: width, h: height, type: 'scene' }));
+    engine.startRenderLoop();
+    setStatus(fill('status_rendering'));
+    if (btnStart) btnStart.disabled = true;
+    if (btnStop) btnStop.disabled = false;
+    if (btnDownloadImg) btnDownloadImg.disabled = false;
+    if (btnRecord) btnRecord.disabled = true;
   } catch (err) {
     setStatus(fill('status_err_media'), 'error');
     console.error(err);

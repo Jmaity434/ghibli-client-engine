@@ -1,0 +1,33 @@
+{
+  "name": "ghibli-client-engine",
+  "version": "1.0.0",
+  "description": "100% client-side WebGL2 Studio Ghibli-inspired painterly style layer for images and video. Zero AI. Zero server.",
+  "main": "src/modules/core-engine.js",
+  "module": "src/modules/core-engine.js",
+  "type": "module",
+  "scripts": {
+    "demo": "npx serve ."
+  },
+  "keywords": [
+    "ghibli",
+    "anime-shader",
+    "painterly-filter",
+    "webgl2",
+    "video-filter",
+    "client-side",
+    "non-ai",
+    "real-time",
+    "cel-shading",
+    "stylization"
+  ],
+  "author": "Jmaity434",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jmaity434/ghibli-client-engine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Jmaity434/ghibli-client-engine/issues"
+  },
+  "homepage": "https://github.com/Jmaity434/ghibli-client-engine#readme"
+}
