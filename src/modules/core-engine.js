@@ -501,54 +501,49 @@ export class GhibliClientEngine {
                     return;
                 }
                 this.syncCanvasSize(w, h);
+                this._internalVideo.play().catch(() => {});
                 resolve({ width: w, height: h, type: 'video' });
             };
             this._internalVideo.onerror = () => reject(new Error('Video load failed'));
+            this._internalVideo.load();
         });
-    }
-
-    async startWebcam() {
-        await this.ready();
-        this.stopEngine();
-        this.sourceType = 'webcam';
-        this.activeSource = this._internalVideo;
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user' },
-            audio: false
-        });
-        return this.attachStream(stream);
-    }
-
-    syncCanvasSize(sourceW, sourceH) {
-        const dpr = Math.min(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1, 2);
-        const w = this.canvas.clientWidth ? Math.round(this.canvas.clientWidth * dpr) : (sourceW || this.canvas.width || 640);
-        const h = this.canvas.clientHeight ? Math.round(this.canvas.clientHeight * dpr) : (sourceH || this.canvas.height || 360);
-
-        if (this.canvas.width !== w || this.canvas.height !== h) {
-            this.canvas.width = Math.max(1, w);
-            this.canvas.height = Math.max(1, h);
-            this._lastW = this.canvas.width;
-            this._lastH = this.canvas.height;
-        }
     }
 
     getSourceDimensions() {
         const el = this.activeSource;
-        if (!el) return { w: this.canvas.width, h: this.canvas.height };
-        if (el instanceof HTMLVideoElement) {
-            return { w: el.videoWidth || el.clientWidth || 640, h: el.videoHeight || el.clientHeight || 360 };
+        if (!el) return { w: 640, h: 360 };
+        if (this.sourceType === 'image') {
+            return {
+                w: el.naturalWidth || el.width || 640,
+                h: el.naturalHeight || el.height || 480,
+            };
         }
-        if (el instanceof HTMLImageElement) {
-            return { w: el.naturalWidth || el.width || 640, h: el.naturalHeight || el.height || 480 };
-        }
-        if (el instanceof HTMLCanvasElement) {
+        if (this.sourceType === 'canvas') {
             return { w: el.width || 640, h: el.height || 480 };
         }
-        return { w: this.canvas.width, h: this.canvas.height };
+        return {
+            w: el.videoWidth || el.clientWidth || 640,
+            h: el.videoHeight || el.clientHeight || 360,
+        };
     }
 
-    /** Draw one frame from active source onto canvas via shader */
+    syncCanvasSize(srcW, srcH) {
+        const gl = this.gl;
+        if (!gl) return;
+        const dpr = Math.min(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1, 2);
+        const clientW = this.canvas.clientWidth ? Math.round(this.canvas.clientWidth * dpr) : Math.round(srcW * dpr);
+        const clientH = this.canvas.clientHeight ? Math.round(this.canvas.clientHeight * dpr) : Math.round(srcH * dpr);
+        const w = Math.max(1, clientW | 0);
+        const h = Math.max(1, clientH | 0);
+        if (this.canvas.width !== w || this.canvas.height !== h) {
+            this.canvas.width = w;
+            this.canvas.height = h;
+            gl.viewport(0, 0, w, h);
+            this._lastW = w;
+            this._lastH = h;
+        }
+    }
+
     drawFrame() {
         if (!this.program || !this.sourceType || !this.activeSource) return;
 
@@ -565,73 +560,63 @@ export class GhibliClientEngine {
         }
 
         const { w: srcW, h: srcH } = this.getSourceDimensions();
-        const dpr = Math.min(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1, 2);
-        const w = this.canvas.clientWidth ? Math.round(this.canvas.clientWidth * dpr) : this.canvas.width;
-        const h = this.canvas.clientHeight ? Math.round(this.canvas.clientHeight * dpr) : this.canvas.height;
+        this.syncCanvasSize(srcW, srcH);
 
-        if (w !== this._lastW || h !== this._lastH) {
-            this.canvas.width = Math.max(1, w);
-            this.canvas.height = Math.max(1, h);
-            this._lastW = this.canvas.width;
-            this._lastH = this.canvas.height;
-        }
-
-        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-
-        gl.useProgram(this.program);
-
-        gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.videoTexture);
         try {
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceEl);
         } catch (_) {
             return;
         }
-        gl.uniform1i(loc.videoTexture, 0);
 
-        gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, this.paperTexture);
-        gl.uniform1i(loc.ghibliTexture, 1);
+        gl.useProgram(this.program);
 
-        // Aspect ratio calculations
-        const canvasAspect = this.canvas.width / Math.max(1, this.canvas.height);
-        const sourceAspect = srcW / Math.max(1, srcH);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+        gl.enableVertexAttribArray(loc.position);
+        gl.vertexAttribPointer(loc.position, 2, gl.FLOAT, false, 0, 0);
+
+        const canvasAspect = this._lastW / Math.max(1, this._lastH);
+        const videoAspect = srcW / Math.max(1, srcH);
 
         let scaleX = 1.0;
         let scaleY = 1.0;
         let offsetX = 0.0;
         let offsetY = 0.0;
-        let fitMode = 0.0; // fill
+        let fitMode = 0.0;
 
         if (this.fit === 'contain') {
             fitMode = 1.0;
-            if (sourceAspect > canvasAspect) {
-                scaleY = canvasAspect / sourceAspect;
+            if (videoAspect > canvasAspect) {
+                scaleY = canvasAspect / videoAspect;
                 offsetY = (1.0 - scaleY) * 0.5;
             } else {
-                scaleX = sourceAspect / canvasAspect;
+                scaleX = videoAspect / canvasAspect;
                 offsetX = (1.0 - scaleX) * 0.5;
             }
         } else if (this.fit === 'cover') {
             fitMode = 2.0;
-            if (sourceAspect > canvasAspect) {
-                scaleX = canvasAspect / sourceAspect;
+            if (videoAspect > canvasAspect) {
+                scaleX = canvasAspect / videoAspect;
                 offsetX = (1.0 - scaleX) * 0.5;
             } else {
-                scaleY = sourceAspect / canvasAspect;
+                scaleY = videoAspect / canvasAspect;
                 offsetY = (1.0 - scaleY) * 0.5;
             }
         }
 
-        gl.uniform2f(loc.resolution, this.canvas.width, this.canvas.height);
+        gl.uniform2f(loc.resolution, this._lastW, this._lastH);
         gl.uniform1f(loc.edgeIntensity, this.edgeIntensity);
         gl.uniform2f(loc.uvScale, scaleX, scaleY);
         gl.uniform2f(loc.uvOffset, offsetX, offsetY);
         gl.uniform1f(loc.fitMode, fitMode);
 
-        gl.enableVertexAttribArray(loc.position);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-        gl.vertexAttribPointer(loc.position, 2, gl.FLOAT, false, 0, 0);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.videoTexture);
+        gl.uniform1i(loc.videoTexture, 0);
+
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.paperTexture);
+        gl.uniform1i(loc.ghibliTexture, 1);
 
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
@@ -663,6 +648,11 @@ export class GhibliClientEngine {
         this.animationFrameId = requestAnimationFrame(render);
     }
 
+    /** Realtime layer start (alias of startRenderLoop) — continuous 60fps style overlay */
+    start() {
+        this.startRenderLoop();
+    }
+
     processStill() {
         this.drawFrame();
     }
@@ -682,16 +672,23 @@ export class GhibliClientEngine {
         }
     }
 
+    /** Realtime layer stop (alias of stopEngine) */
+    stop() {
+        this.stopEngine();
+    }
+
     setEdgeIntensity(value) {
         this.edgeIntensity = Math.max(0.05, Math.min(1.0, value));
-        if (this.sourceType === 'image') {
-            this.processStill();
-        }
     }
 
     setFit(fit) {
-        this.fit = fit;
-        if (!this.isProcessing) this.drawFrame();
+        if (['contain', 'cover', 'fill'].includes(fit)) {
+            this.fit = fit;
+        }
+    }
+
+    getCanvas() {
+        return this.canvas;
     }
 
     getCanvasStream(fps = 30, includeAudio = true) {
@@ -709,9 +706,7 @@ export class GhibliClientEngine {
 
     async exportImage(type = 'image/png', quality = 0.92) {
         this.drawFrame();
-        return new Promise((resolve) => {
-            this.canvas.toBlob((blob) => resolve(blob), type, quality);
-        });
+        return new Promise((resolve) => this.canvas.toBlob(resolve, type, quality));
     }
 
     destroy() {
@@ -734,6 +729,12 @@ export class GhibliClientEngine {
         this.paperTexture = null;
         this.activeSource = null;
     }
+}
+
+// Aliases for unified realtime layer ecosystem compatibility
+export const GhibliLayer = GhibliClientEngine;
+export function createGhibliClientEngine(canvas, config) {
+    return new GhibliClientEngine(canvas, config);
 }
 
 export default GhibliClientEngine;
